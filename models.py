@@ -1,12 +1,8 @@
 # Torch
 import torch
 import torch.nn as nn
-import torch.functional as F
+import torch.nn.functional as F
 from torch.autograd import Variable
-# TensorFlow
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.keras import layers
 # Misc
 import numpy as np
 import pandas as pd
@@ -14,8 +10,7 @@ import pandas as pd
 from utils import to_device
 
 
-
-# W-MedGan-GP
+# MedGan
 
 class Discriminator(nn.Module):
 
@@ -74,6 +69,7 @@ class Discriminator(nn.Module):
     def loss(self, y_real, y_synthetic, gradient_penalty):
         return -torch.mean(y_real) + torch.mean(y_synthetic) + self.lambda_gp * gradient_penalty
 
+
 class Generator(nn.Module):
 
     def __init__(self, args):
@@ -82,14 +78,14 @@ class Generator(nn.Module):
         self.random_dim = args.random_dim
         self.embedding_dim = args.embedding_dim
         self.hidden = args.hidden_G
-        # Embedding
-        self.decoder = args.decoder
+        self.is_finetuning = args.is_finetuning
         if args.decoder is not None:
-            self.is_finetuning = args.is_finetuning
             self.decoder = args.decoder.to(args.device)
             if not self.is_finetuning:
                 for params in self.decoder.parameters():
                     params.require_grad = False
+        else:
+            self.decoder = None
 
         self.input_layer = nn.Linear(self.random_dim, self.hidden[0])
         self.input_activation = nn.ReLU()
@@ -109,7 +105,7 @@ class Generator(nn.Module):
             x = layer(x)
         x = self.output_layer(x)
         x = self.output_activation(x)
-        if self.decoder is not None:  # Embedding
+        if self.decoder is not None:
             x = self.decoder(x)
         return x
 
@@ -179,18 +175,19 @@ class Decoder(nn.Module):
         for i in range(len(self.hidden)-1, 0, -1):
             self.layers.append(nn.Linear(self.hidden[i], self.hidden[i-1]))
         self.output_layer = nn.Linear(self.hidden[0], self.input_dim)
-
+        
         # Activations
         self.relu = nn.ReLU()
 
+
     def forward(self, x):
         x = self.input_layer(x)
-        x = self.relu(x)
+        x=self.relu(x)
         for layer in self.layers:
             x = layer(x)
-            x = self.relu(x)
+            x=self.relu(x)
         x = self.output_layer(x)
-        x = self.relu(x)
+        x=self.relu(x)
         return x
 
 
@@ -216,108 +213,63 @@ class Autoencoder(nn.Module):
     def forward(self, x):
         return self.decoder(self.encoder(x))
 
-#Variational Autoencoder
 
-class VAEEncoder(nn.Module):
-
-    def __init__(self, args):
-        super(VAEEncoder, self).__init__()
-
-        self.input_dim = args.input_dim
-        self.latent_dim = args.latent_dim
-        self.hidden = args.hidden
-
-        # Layers
-        self.input_layer = nn.Linear(self.input_dim, self.hidden[0])
-        self.layers = nn.ModuleList()
-        for i in range(1, len(self.hidden)):
-            self.layers.append(nn.Linear(self.hidden[i-1], self.hidden[i]))
-        self.output_layer = nn.Linear(self.hidden[-1], self.latent_dim)
-
-        # Activations
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
-        
-        self.N = torch.distributions.Normal(0, 1)
-        self.N.loc = self.N.loc.cuda() # hack to get sampling on the GPU
-        self.N.scale = self.N.scale.cuda()
-        self.kl = 0
-        
-
-    def forward(self, x):
-        x = self.input_layer(x)
-        x = self.relu(x)
-        for layer in self.layers:
-            x = layer(x)
-            x = self.relu(x)
-        x = self.output_layer(x)
-        x = self.tanh(x)
-        mu = x
-        sigma = torch.exp(x)
-        z = mu + sigma*self.N.sample(mu.shape)
-        self.kl = (sigma**2 + mu**2 - torch.log(sigma) - 1/2).sum()
-        return z
-    
-        
-
-
-class VAEDecoder(nn.Module):
-
-    def __init__(self, args):
-        super(VAEDecoder, self).__init__()
-
-        self.input_dim = args.input_dim
-        self.latent_dim = args.latent_dim
-        self.hidden = args.hidden
-
-        # Layers
-        self.input_layer = nn.Linear(self.latent_dim, self.hidden[-1])
-        self.layers = nn.ModuleList()
-        for i in range(len(self.hidden)-1, 0, -1):
-            self.layers.append(nn.Linear(self.hidden[i], self.hidden[i-1]))
-        self.output_layer = nn.Linear(self.hidden[0], self.input_dim)
-
-        # Activations
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        x = self.input_layer(x)
-        x = self.relu(x)
-        for layer in self.layers:
-            x = layer(x)
-            x = self.relu(x)
-        x = self.output_layer(x)
-        x = self.relu(x)
-        return x
-    
+# modified place
 class VAE(nn.Module):
 
-    def __init__(self, args):
+    def __init__(self, args) -> None:
         super(VAE, self).__init__()
 
         self.input_dim = args.input_dim
         self.latent_dim = args.latent_dim
         self.hidden = args.hidden
-        self.p_zero = args.p_zero
-
-        self.device = args.device
-
-        self.encoder = VAEEncoder(args).to(self.device)
-        self.decoder = VAEDecoder(args).to(self.device)
-
-        self.criterion = nn.MSELoss(reduction="sum")
-
         self.logs = {"train loss": [], "val loss": []}
 
+        # Encoder
+        self.enc_input = nn.Linear(self.input_dim, self.hidden[0])
+        self.enc_layers = nn.ModuleList()
+        for i in range(1, len(self.hidden)):
+            self.enc_layers.append(nn.Linear(self.hidden[i-1], self.hidden[i]))
+        self.mu = nn.Linear(self.hidden[-1], self.latent_dim)
+        self.logvar = nn.Linear(self.hidden[-1], self.latent_dim)
+
+        # Decoder
+        self.dec_input = nn.Linear(self.latent_dim, self.hidden[-1])
+        self.dec_layers = nn.ModuleList()
+        for i in range(len(self.hidden)-1, 0, -1):
+            self.dec_layers.append(nn.Linear(self.hidden[i], self.hidden[i-1]))
+        self.dec_output = nn.Linear(self.hidden[0], self.input_dim)
+
+        # Activations
+        self.tanh = nn.Tanh()
+
+    def encode(self, x):
+        x = self.enc_input(x)
+        for layer in self.enc_layers:
+            x = layer(x)
+            x = self.tanh(x)
+        return self.mu(x), self.logvar(x)
+
+    def decode(self, z):
+        x = self.dec_input(z)
+        for layer in self.dec_layers:
+            x = layer(x)
+        return self.dec_output(x)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
     def forward(self, x):
-        return self.decoder(self.encoder(x))
-     
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        return self.decode(z), mu, logvar
 
-
-
-
-
-
+    def loss(self, x, reconstruction, mu, logvar):
+        bce = F.binary_cross_entropy(reconstruction, x, reduction="sum")
+        kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        return bce + kl
 
 
 
