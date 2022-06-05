@@ -97,6 +97,7 @@ class Copula_scaler():
         for column in self.columns:
             x_u = np.array(self.uniques[column])
             data_copy[column] = data[column].apply(sample_uniform, args=(x_u,))
+
         return data_copy
     
             
@@ -123,7 +124,7 @@ class Copula_scaler():
 
 # Data Generation
 
-def generate_samples(generator, batch_size, args):
+def generate_gan(generator, batch_size, args):
     Tensor = torch.cuda.FloatTensor if args.device == "cuda" else torch.FloatTensor
     generator.to(args.device)
     # model needs to be on device before
@@ -165,13 +166,12 @@ def project_samples(batch, dim_to_project, domain):
     domain: a dictionary {"HINCP": array of possible values, "NP": ...}
     """
     # find projection value
-    def _find_nearest(array, value): # Using pytorch may be faster when using a GPU
+    def _find_nearest(value, array): 
         idx = (np.abs(array - value)).argmin()
         return array[idx]
     # apply projection
-    for index, row in batch.iterrows():
-        for dim in dim_to_project:
-            row[dim] = _find_nearest(domain[dim], row[dim])
+    for dim in dim_to_project:
+        batch[dim] = batch[dim].apply(_find_nearest, args=(domain[dim],))
     return batch
 
 
@@ -298,11 +298,11 @@ def srmse(real: pd.DataFrame, synthetic: pd.DataFrame):
     """
     columns = list(real.columns.values)
     # Relative frequency
-    real_f = real.value_counts(columns, normalize=True)
-    synthetic_f = synthetic.value_counts(columns, normalize=True)
+    real_f = real.value_counts(normalize=True)
+    synthetic_f = synthetic.value_counts(normalize=True)
     # Total numbers of categories
     Mi = [real_f.index.get_level_values(l).union(synthetic_f.index.get_level_values(l)).unique().size for l in range(len(columns))]
-    M = np.sum(Mi)
+    M = np.prod(Mi)
     # SRMSE
     return ((real_f.subtract(synthetic_f, fill_value=0)**2)*M).sum()**(.5)
 

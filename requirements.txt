@@ -1,0 +1,8 @@
+ipython
+numpy>=1.19.0
+torch
+tensorflow
+sdmetrics
+sdv
+pomegranate
+statsmodels

@@ -3,17 +3,11 @@ import numpy as np
 import torch
 
 
-def train_autoencoder(model, train_loader, val_loader, optimizer, args):
-
-    # Init
-    train_size = len(train_loader.dataset)
-    val_size = len(val_loader.dataset)
+def train_autoencoder(model, train_loader, optimizer, args, val_loader=None):
 
     for epoch in range(args.epochs):
 
         running_loss = 0
-        running_val_loss = 0
-
         for idx, batch in enumerate(train_loader):
             # Prediction
             target = to_device(batch, args.device)
@@ -33,18 +27,23 @@ def train_autoencoder(model, train_loader, val_loader, optimizer, args):
             loss.backward()
             optimizer.step()
 
-        for idx, batch in enumerate(val_loader):
-            # Prediction
-            target = to_device(batch, args.device)
-            reconstruction = model(target)
+        if val_loader is not None:
+            running_val_loss = 0
+            for idx, batch in enumerate(val_loader):
+                # Prediction
+                target = to_device(batch, args.device)
+                reconstruction = model(target)
 
-            # Loss
-            loss = model.criterion(reconstruction, target)
-            running_val_loss += loss.item()
+                # Loss
+                loss = model.criterion(reconstruction, target)
+                running_val_loss += loss.item()
 
         # Average loss over the batches during the training
+        train_size = len(train_loader.dataset)
         model.logs["train loss"].append(running_loss/train_size)
-        model.logs["val loss"].append(running_val_loss/val_size)
+        if val_loader is not None:
+            val_size = len(val_loader.dataset)
+            model.logs["val loss"].append(running_val_loss/val_size)
 
 
 
@@ -93,10 +92,9 @@ def train_gan(model, train_loader, optimizer_D, optimizer_G, args):
 
 
 
-def train_vae(model, train_loader, val_loader, optimizer, args):
+def train_vae(model, train_loader, optimizer, args, val_loader=None):
+    
     model.to(args.device)
-    train_size = len(train_loader.dataset)
-    val_size = len(val_loader.dataset)
 
     for epoch in range(args.epochs):
         # training
@@ -112,13 +110,17 @@ def train_vae(model, train_loader, val_loader, optimizer, args):
             optimizer.step()
 
         # validation
-        model.eval()
-        running_val_loss = 0
-        for idx, batch in enumerate(val_loader):
-            batch = to_device(batch, args.device)
-            reconstruction, mu, logvar = model(batch)
-            loss = model.loss(batch, reconstruction, mu, logvar)
-            running_val_loss += loss.item()
+        if val_loader is not None:
+            model.eval()
+            running_val_loss = 0
+            for idx, batch in enumerate(val_loader):
+                batch = to_device(batch, args.device)
+                reconstruction, mu, logvar = model(batch)
+                loss = model.loss(batch, reconstruction, mu, logvar)
+                running_val_loss += loss.item()
 
+        train_size = len(train_loader.dataset)
         model.logs["train loss"].append(running_loss/train_size)
-        model.logs["val loss"].append(running_val_loss/val_size)    
+        if val_loader is not None:
+            val_size = len(val_loader.dataset)
+            model.logs["val loss"].append(running_val_loss/val_size)    

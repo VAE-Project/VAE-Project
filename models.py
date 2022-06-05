@@ -175,19 +175,18 @@ class Decoder(nn.Module):
         for i in range(len(self.hidden)-1, 0, -1):
             self.layers.append(nn.Linear(self.hidden[i], self.hidden[i-1]))
         self.output_layer = nn.Linear(self.hidden[0], self.input_dim)
-        
+
         # Activations
         self.relu = nn.ReLU()
 
-
     def forward(self, x):
         x = self.input_layer(x)
-        x=self.relu(x)
+        x = self.relu(x)
         for layer in self.layers:
             x = layer(x)
-            x=self.relu(x)
+            x = self.relu(x)
         x = self.output_layer(x)
-        x=self.relu(x)
+        x = self.relu(x)
         return x
 
 
@@ -214,7 +213,7 @@ class Autoencoder(nn.Module):
         return self.decoder(self.encoder(x))
 
 
-# modified place
+
 class VAE(nn.Module):
 
     def __init__(self, args) -> None:
@@ -241,20 +240,25 @@ class VAE(nn.Module):
         self.dec_output = nn.Linear(self.hidden[0], self.input_dim)
 
         # Activations
-        self.tanh = nn.Tanh()
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
 
     def encode(self, x):
         x = self.enc_input(x)
+        x = self.relu(x)
         for layer in self.enc_layers:
             x = layer(x)
-            x = self.tanh(x)
+            x = self.relu(x)
         return self.mu(x), self.logvar(x)
 
     def decode(self, z):
         x = self.dec_input(z)
+        x = self.relu(x)
         for layer in self.dec_layers:
             x = layer(x)
-        return self.dec_output(x)
+            x = self.relu(x)
+        x = self.dec_output(x)
+        return self.sigmoid(x)
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5*logvar)

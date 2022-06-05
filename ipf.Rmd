@@ -1,0 +1,68 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+install.packages(c("tidyverse","readxl"))
+install.packages("writexl")
+install.packages("xlsx")
+install.packages("janitor")
+install.packages("ipfr")
+```
+
+
+```{r}
+library("readxl")
+library("writexl")
+library("tidyverse")
+library("xlsx")
+library("janitor")
+library(ipfr)
+library(glue)
+```
+
+
+```{r}
+# Exp1
+# Seed
+source <- read_csv(glue("data/exp1/ipfData/source.csv"))
+# Counts 
+target_counts <- list()
+for (i in colnames(source)){
+  target_counts[[i]] <- read_csv(glue("data/exp1/ipfData/{i}.csv"))
+}
+# IPF
+result <- ipu(source, target_counts)
+write.table(result$weight_dist$data , glue("data/exp1/ipfData/weights.csv"), sep=",", row.names=FALSE)
+```
+
+```{r}
+# Exp2
+# Seed
+source <- read_csv(glue("data/exp2/ipfData/source.csv"))
+# Counts 
+target_counts <- list()
+for (i in colnames(source)){
+  target_counts[[i]] <- read_csv(glue("data/exp2/ipfData/{i}.csv"))
+}
+# IPF
+result <- ipu(source, target_counts)
+write.table(result$weight_dist$data , glue("data/exp2/ipfData/weights.csv"), sep=",", row.names=FALSE)
+```
+
+
+
+```{r}
+# Exp3
+# Seed
+source <- read_csv(glue("data/exp3/ipfData/source.csv"))
+# Counts 
+target_counts <- list()
+for (i in colnames(source)){
+  target_counts[[i]] <- read_csv(glue("data/exp3/ipfData/{i}.csv"))
+}
+# IPF
+result <- ipu(source, target_counts)
+write.table(result$weight_dist$data , glue("data/exp3/ipfData/weights.csv"), sep=",", row.names=FALSE)
+```
