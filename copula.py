@@ -94,7 +94,7 @@ class CopulaScaler():
         return data_tr
 
 
-    def resampling_trick(self, data):
+    def resampling_trick(self, data,categorical):
         """Resample discrete encoded features uniformly between the steps of the ECDF.
 
         Parameters
@@ -120,7 +120,7 @@ class CopulaScaler():
                 return np.random.uniform(low=us[idx-1], high=u)
 
         data_tr = data.copy()
-        for column in self.columns:
+        for column in self.categorical:
             x_u = np.array(self.uniques[column])
             data_tr[column] = data_tr[column].apply(sample_uniform, args=(x_u,))
         return data_tr
