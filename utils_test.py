@@ -8,8 +8,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
-from statsmodels.distributions.empirical_distribution import ECDF
-from scipy.spatial import distance_matrix
 # from models import Gibbs
 
 
@@ -56,72 +54,8 @@ def train_test(df, test_size=0.3, ignore_pumas=True, data_folder='/content/gdriv
 
     return train, test
 
-def pseudo_inverse(u, x_u):
-    us = x_u[:, 1]
-    valid_i = np.ma.MaskedArray(us, us<u)
-    x = x_u[np.ma.argmin(valid_i), 0]
-    return x
 
 
-class Copula_scaler():
-
-    def __init__(self, data: pd.DataFrame):
-        self.data = data
-        self.columns = data.columns
-        self.ecdfs = {}
-        self.uniques = {} # {column : [(x, ecdf(x)), ...], ...} sorted
-        
-        for column in self.columns:
-            serie = data[column]
-            # ECDF
-            self.ecdfs[column] = ECDF(serie)
-            # Setting the table for pseudo inverse ecdf
-            x_u = []
-            uniques = np.sort(serie.unique())
-            for x in uniques:
-                u = self.ecdfs[column](x)
-                x_u.append((x, u))
-            self.uniques[column] = x_u
-
-
-    def resampling_trick(self, data: pd.DataFrame):
-
-        def sample_uniform(u, x_u):
-            us = x_u[:, 1]
-            idx = list(us).index(u)
-            if idx == 0:
-                return np.random.uniform(low=0, high=u)
-            else:
-                return np.random.uniform(low=us[idx-1], high=u)
-
-        data_copy = data.copy()
-        for column in self.columns:
-            x_u = np.array(self.uniques[column])
-            data_copy[column] = data[column].apply(sample_uniform, args=(x_u,))
-        return data_copy
-    
-            
-    def encode(self, data=None):
-        """
-        Returns F(x) ~ U[0,1]
-        """
-        data_copy = data.copy() if data is not None else self.data.copy()
-        for column in self.columns:
-            data_copy[column] = data_copy[column].apply(self.ecdfs[column])
-        return data_copy
-
-    
-    def decode(self, data: pd.DataFrame):
-        """
-        Returns the pseudo inverse F-1(u) = min(x: F(x) > u)
-        """
-        data_copy = data.copy()
-        for column in self.columns:
-            x_u = np.array(self.uniques[column])
-            data_copy[column] = data[column].apply(pseudo_inverse, args=(x_u,))
-        return data_copy
-
-    
 # Data Generation
 def generate_samples_vae(encoder,decoder, train_df,args):
     Tensor = torch.cuda.FloatTensor if args.device == "cuda" else torch.FloatTensor
@@ -139,7 +73,7 @@ def generate_samples(generator, batch_size, args):
     z = Tensor(np.random.normal(
         0, 1, size=(batch_size, args.random_dim)))
     batch_synthetic = generator(z)
-    return batch_synthetic.cpu().detach().numpy()
+    return np.round(batch_synthetic.cpu().detach().numpy())
 
 
 def generate_samples_gibbs(gibbs_sampler, train: pd.DataFrame, N: int):
@@ -328,24 +262,6 @@ def sampling_zeros(
     sampling_zeros = synthetic_set.intersection(test_set) - train_set
 
     return len(sampling_zeros)
-
-def srmse(real: pd.DataFrame, synthetic: pd.DataFrame):
-    """
-    Definition is taken from A Bayesian network approach for population synthesis
-    https://www.researchgate.net/publication/282815687_A_Bayesian_network_approach_for_population_synthesis
-    """
-    columns = list(real.columns.values)
-    # Relative frequency
-    real_f = real.value_counts(columns, normalize=True)
-    synthetic_f = synthetic.value_counts(columns, normalize=True)
-    # Total numbers of categories
-    Mi = [real_f.index.get_level_values(l).union(synthetic_f.index.get_level_values(l)).unique().size for l in range(len(columns))]
-    M = np.sum(Mi)
-    # SRMSE
-    return ((real_f.subtract(synthetic_f, fill_value=0)**2)*M).sum()**(.5)
-
-def matrix_euclidean_dist(m1, m2):
-    return np.mean(distance_matrix(m1, m2, p=2))
 
 
 

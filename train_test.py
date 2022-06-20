@@ -132,5 +132,3 @@ def train_gan(model, train_loader, optimizer_D, optimizer_G, args):
                 if args.verbose and idx % 100 == 0:
                     print(
                         f"Epoch {epoch}, Iteration {idx}, Appriximation of EM distance: {loss_D.item()}")
-  
-

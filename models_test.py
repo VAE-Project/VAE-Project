@@ -233,7 +233,6 @@ class VAEEncoder(nn.Module):
         for i in range(1, len(self.hidden)):
             self.layers.append(nn.Linear(self.hidden[i-1], self.hidden[i]))
         self.output_layer = nn.Linear(self.hidden[-1], self.latent_dim)
-        
 
         # Activations
         self.relu = nn.ReLU()
